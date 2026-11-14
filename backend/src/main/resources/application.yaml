@@ -5,6 +5,10 @@ spring:
     url: jdbc:postgresql://localhost:5433/medrag
     username: medrag
     password: medrag
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
   jpa:
     hibernate:
       ddl-auto: none
