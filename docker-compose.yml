@@ -1,0 +1,15 @@
+﻿services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: medrag-db
+    environment:
+      POSTGRES_DB: medrag
+      POSTGRES_USER: medrag
+      POSTGRES_PASSWORD: medrag
+    ports:
+      - "5433:5432"
+    volumes:
+      - medrag-data:/var/lib/postgresql/data
+
+volumes:
+  medrag-data:

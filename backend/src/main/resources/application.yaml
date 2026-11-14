@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: medrag
+  datasource:
+    url: jdbc:postgresql://localhost:5433/medrag
+    username: medrag
+    password: medrag
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+
+server:
+  port: 8080
+
+app:
+  gemini:
+    api-key: ${GEMINI_API_KEY:}
+    chat-model: gemini-3.5-flash
+    embedding-model: gemini-embedding-001
+    embedding-dimensions: 768
+  rag:
+    chunk-size: 800
+    chunk-overlap: 100
+    top-k: 4
+    similarity-threshold: 0.65

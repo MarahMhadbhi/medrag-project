@@ -1,0 +1,21 @@
+# IDE
+.idea/
+*.iml
+
+# Fichiers de build
+target/
+node_modules/
+dist/
+
+# Logs
+*.log
+log.txt
+
+# Secrets : ne jamais envoyer sur GitHub
+.env
+*.env
+application-local.yml
+
+# Syst?me
+.DS_Store
+Thumbs.db
