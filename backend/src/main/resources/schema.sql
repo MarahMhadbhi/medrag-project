@@ -26,3 +26,5 @@ CREATE INDEX IF NOT EXISTS idx_chunks_document
 
 CREATE INDEX IF NOT EXISTS idx_chunks_embedding
     ON chunks USING hnsw (embedding vector_cosine_ops);
+
+ALTER TABLE chunks ALTER COLUMN embedding DROP NOT NULL;
