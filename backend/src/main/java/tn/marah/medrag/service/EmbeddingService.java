@@ -1,5 +1,7 @@
 package tn.marah.medrag.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -11,6 +13,8 @@ import java.util.List;
 @Service
 public class EmbeddingService {
 
+    private static final Logger log = LoggerFactory.getLogger(EmbeddingService.class);
+
     public record IndexResult(Long documentId, int embeddedChunks, int remainingChunks) {}
 
     private record ChunkRow(long id, String content) {}
@@ -18,12 +22,15 @@ public class EmbeddingService {
     private final JdbcTemplate jdbc;
     private final GeminiEmbeddingClient client;
     private final int batchSize;
+    private final long pauseMs;
 
     public EmbeddingService(JdbcTemplate jdbc, GeminiEmbeddingClient client,
-                            @Value("${app.gemini.embedding-batch-size:50}") int batchSize) {
+                            @Value("${app.gemini.embedding-batch-size:50}") int batchSize,
+                            @Value("${app.gemini.embedding-pause-ms:0}") long pauseMs) {
         this.jdbc = jdbc;
         this.client = client;
         this.batchSize = batchSize;
+        this.pauseMs = pauseMs;
     }
 
     // Pas de @Transactional : chaque lot est enregistre tout de suite,
@@ -42,6 +49,10 @@ public class EmbeddingService {
 
         int done = 0;
         for (int from = 0; from < pending.size(); from += batchSize) {
+            if (from > 0 && pauseMs > 0) {
+                pause(pauseMs);
+            }
+
             List<ChunkRow> batch = pending.subList(from, Math.min(from + batchSize, pending.size()));
             List<float[]> vectors = client.embedDocuments(batch.stream().map(ChunkRow::content).toList());
 
@@ -52,12 +63,22 @@ public class EmbeddingService {
                         ps.setLong(2, chunk.id());
                     });
             done += batch.size();
+            log.info("Document {} : {}/{} chunks indexes", documentId, done, pending.size());
         }
 
         Integer remaining = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM chunks WHERE document_id = ? AND embedding IS NULL",
                 Integer.class, documentId);
         return new IndexResult(documentId, done, remaining == null ? 0 : remaining);
+    }
+
+    private static void pause(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Indexation interrompue");
+        }
     }
 
     private static String toVectorLiteral(float[] v) {

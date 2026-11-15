@@ -2,11 +2,15 @@ package tn.marah.medrag.service;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,7 +24,7 @@ public class GeminiEmbeddingClient {
     record Values(List<Double> values) {}
     record BatchResponse(List<Values> embeddings) {}
 
-    private static final int MAX_ATTEMPTS = 4;
+    private static final int MAX_ATTEMPTS = 6;
 
     private final RestClient rest;
     private final String apiKey;
@@ -33,9 +37,18 @@ public class GeminiEmbeddingClient {
         this.apiKey = apiKey;
         this.model = model;
         this.dimensions = dimensions;
+
+        HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+        factory.setReadTimeout(Duration.ofSeconds(90));
+
         this.rest = RestClient.builder()
                 .baseUrl("https://generativelanguage.googleapis.com/v1beta")
                 .defaultHeader("x-goog-api-key", apiKey)
+                .requestFactory(factory)
                 .build();
     }
 
@@ -44,7 +57,7 @@ public class GeminiEmbeddingClient {
         return embed(texts, "RETRIEVAL_DOCUMENT");
     }
 
-    /** Embedding pour une question d'utilisateur (recherche, etape 5). */
+    /** Embedding pour une question d'utilisateur (recherche). */
     public float[] embedQuery(String text) {
         return embed(List.of(text), "RETRIEVAL_QUERY").get(0);
     }
@@ -80,7 +93,7 @@ public class GeminiEmbeddingClient {
     }
 
     private BatchResponse callWithRetry(BatchRequest body) {
-        long wait = 2000;
+        long wait = 5000;
         for (int attempt = 1; ; attempt++) {
             try {
                 return rest.post()
@@ -88,15 +101,21 @@ public class GeminiEmbeddingClient {
                         .body(body)
                         .retrieve()
                         .body(BatchResponse.class);
-            } catch (HttpClientErrorException e) {
-                boolean retryable = e.getStatusCode().value() == 429;
+            } catch (ResourceAccessException e) {
+                if (attempt == MAX_ATTEMPTS) {
+                    throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                            "Gemini injoignable : " + e.getMessage());
+                }
+            } catch (RestClientResponseException e) {
+                int status = e.getStatusCode().value();
+                boolean retryable = status == 429 || status >= 500;
                 if (!retryable || attempt == MAX_ATTEMPTS) {
                     throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                            "Erreur Gemini " + e.getStatusCode().value() + " : " + e.getResponseBodyAsString());
+                            "Erreur Gemini " + status + " : " + e.getResponseBodyAsString());
                 }
-                sleep(wait);
-                wait *= 2;
             }
+            sleep(wait);
+            wait = Math.min(wait * 2, 60000);
         }
     }
 

@@ -15,11 +15,13 @@ spring:
     open-in-view: false
   servlet:
     multipart:
-      max-file-size: 20MB
-      max-request-size: 20MB
+      max-file-size: 100MB
+      max-request-size: 100MB
 
 server:
   port: 8080
+  error:
+    include-message: always
 
 app:
   gemini:
@@ -28,7 +30,8 @@ app:
     chat-fallback-model: gemini-3.1-flash-lite
     embedding-model: gemini-embedding-001
     embedding-dimensions: 768
-    embedding-batch-size: 50
+    embedding-batch-size: 20
+    embedding-pause-ms: 13000
   rag:
     chunk-size: 800
     chunk-overlap: 100

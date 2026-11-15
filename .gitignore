@@ -19,3 +19,5 @@ application-local.yml
 # Syst?me
 .DS_Store
 Thumbs.db
+
+test/
