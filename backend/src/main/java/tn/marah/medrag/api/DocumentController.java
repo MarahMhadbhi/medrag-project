@@ -8,6 +8,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import tn.marah.medrag.service.DocumentService;
 import tn.marah.medrag.service.DocumentService.DocumentSummary;
+import tn.marah.medrag.service.IndexingQueue;
 
 import java.util.List;
 
@@ -16,9 +17,11 @@ import java.util.List;
 public class DocumentController {
 
     private final DocumentService documentService;
+    private final IndexingQueue indexingQueue;
 
-    public DocumentController(DocumentService documentService) {
+    public DocumentController(DocumentService documentService, IndexingQueue indexingQueue) {
         this.documentService = documentService;
+        this.indexingQueue = indexingQueue;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -42,6 +45,7 @@ public class DocumentController {
         }
 
         DocumentSummary summary = documentService.ingest(file, title.trim(), organisme.trim(), sourceUrl, language);
+        indexingQueue.enqueue(summary.id());
         return ResponseEntity.status(HttpStatus.CREATED).body(summary);
     }
 

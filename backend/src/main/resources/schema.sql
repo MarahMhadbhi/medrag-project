@@ -28,3 +28,6 @@ CREATE INDEX IF NOT EXISTS idx_chunks_embedding
     ON chunks USING hnsw (embedding vector_cosine_ops);
 
 ALTER TABLE chunks ALTER COLUMN embedding DROP NOT NULL;
+
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'READY';
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS error_message TEXT;

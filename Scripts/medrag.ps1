@@ -27,6 +27,22 @@ function Ask-Medrag($question) {
     Write-Host $r.disclaimer
 }
 
+function Wait-Medrag($id) {
+    while ($true) {
+        $d = (Invoke-RestMethod "http://localhost:8080/api/documents") | Where-Object { $_.id -eq $id }
+        if (-not $d) { Write-Host "Document $id introuvable"; return }
+        Write-Host "  $($d.status) : $($d.indexedChunkCount)/$($d.chunkCount) chunks"
+        if ($d.status -eq "READY") { return }
+        if ($d.status -eq "FAILED") { Write-Host "Echec : $($d.errorMessage)"; return }
+        Start-Sleep -Seconds 10
+    }
+}
+
+function Reindex-Medrag($id) {
+    Invoke-RestMethod -Method Post "http://localhost:8080/api/documents/$id/reindex" | Out-Null
+    Wait-Medrag $id
+}
+
 function Add-Medrag {
     param(
         [string]$Path,
@@ -36,12 +52,14 @@ function Add-Medrag {
         [string]$Lang = "fr"
     )
     $utf8 = New-Object System.Text.UTF8Encoding $false
+    if ([string]::IsNullOrWhiteSpace($Organisme) -or [string]::IsNullOrWhiteSpace($Title)) { Write-Host "Titre et organisme obligatoires"; return }
+    if (-not (Test-Path $Path)) { Write-Host "Fichier introuvable : $Path"; return }
     $tmpTitle = [System.IO.Path]::GetTempFileName()
     $tmpOrg = [System.IO.Path]::GetTempFileName()
     [System.IO.File]::WriteAllText($tmpTitle, $Title, $utf8)
     [System.IO.File]::WriteAllText($tmpOrg, $Organisme, $utf8)
 
-    $curlArgs = @("-s", "--max-time", "1800", "-X", "POST", "http://localhost:8080/api/documents",
+    $curlArgs = @("-sS", "--max-time", "600", "-X", "POST", "http://localhost:8080/api/documents",
         "-F", "file=@$Path",
         "-F", "title=<$tmpTitle",
         "-F", "organisme=<$tmpOrg",
@@ -57,18 +75,6 @@ function Add-Medrag {
         return
     }
     Write-Host "Envoye : id=$($doc.id), pages=$($doc.pageCount), chunks=$($doc.chunkCount)"
-    Index-Medrag $doc.id
+    Wait-Medrag $doc.id
 }
 
-function Index-Medrag($id) {
-    for ($i = 1; $i -le 10; $i++) {
-        try {
-            $r = Invoke-RestMethod -Method Post -TimeoutSec 1800 "http://localhost:8080/api/documents/$id/embeddings"
-            Write-Host "Essai $i : $($r.embeddedChunks) chunks indexes, restant : $($r.remainingChunks)"
-            if ($r.remainingChunks -eq 0) { return }
-        } catch {
-            Write-Host "Essai $i : echec ($($_.Exception.Message)). Pause de 60 s..."
-        }
-        Start-Sleep -Seconds 60
-    }
-}

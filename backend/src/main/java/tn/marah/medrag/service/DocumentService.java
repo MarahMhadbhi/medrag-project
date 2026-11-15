@@ -15,7 +15,8 @@ import java.util.List;
 public class DocumentService {
 
     public record DocumentSummary(Long id, String title, String organisme, String language,
-                                  int pageCount, int chunkCount) {}
+                                  String sourceUrl, int pageCount, int chunkCount,
+                                  int indexedChunkCount, String status, String errorMessage) {}
 
     private final JdbcTemplate jdbc;
     private final PdfTextExtractor extractor;
@@ -55,11 +56,12 @@ public class DocumentService {
         }
 
         String fileName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "document.pdf";
+        String cleanUrl = (sourceUrl != null && !sourceUrl.isBlank()) ? sourceUrl.trim() : null;
 
         Long documentId = jdbc.queryForObject(
-                "INSERT INTO documents (title, organisme, source_url, language, file_name, page_count) "
-                        + "VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
-                Long.class, title, organisme, sourceUrl, language, fileName, pages.size());
+                "INSERT INTO documents (title, organisme, source_url, language, file_name, page_count, status) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, 'PENDING') RETURNING id",
+                Long.class, title, organisme, cleanUrl, language, fileName, pages.size());
 
         jdbc.batchUpdate(
                 "INSERT INTO chunks (document_id, chunk_index, page_number, content) VALUES (?, ?, ?, ?)",
@@ -70,18 +72,22 @@ public class DocumentService {
                     ps.setString(4, chunk.content());
                 });
 
-        return new DocumentSummary(documentId, title, organisme, language, pages.size(), chunks.size());
+        return new DocumentSummary(documentId, title, organisme, language, cleanUrl,
+                pages.size(), chunks.size(), 0, "PENDING", null);
     }
 
     public List<DocumentSummary> list() {
         return jdbc.query(
-                "SELECT d.id, d.title, d.organisme, d.language, COALESCE(d.page_count, 0) AS page_count, "
-                        + "COUNT(c.id) AS chunk_count "
+                "SELECT d.id, d.title, d.organisme, d.language, d.source_url, "
+                        + "COALESCE(d.page_count, 0) AS page_count, d.status, d.error_message, "
+                        + "COUNT(c.id) AS chunk_count, COUNT(c.embedding) AS indexed_count "
                         + "FROM documents d LEFT JOIN chunks c ON c.document_id = d.id "
                         + "GROUP BY d.id ORDER BY d.id DESC",
                 (rs, rowNum) -> new DocumentSummary(
                         rs.getLong("id"), rs.getString("title"), rs.getString("organisme"),
-                        rs.getString("language"), rs.getInt("page_count"), rs.getInt("chunk_count")));
+                        rs.getString("language"), rs.getString("source_url"),
+                        rs.getInt("page_count"), rs.getInt("chunk_count"), rs.getInt("indexed_count"),
+                        rs.getString("status"), rs.getString("error_message")));
     }
 
     public void delete(Long id) {
