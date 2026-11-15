@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { ask } from './api'
+import Admin from './components/Admin'
 import Message from './components/Message'
 import Welcome from './components/Welcome'
 import { Icon, Logo } from './components/Icons'
 
 export default function App() {
+  const [view, setView] = useState('chat')
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -52,6 +54,10 @@ export default function App() {
     setInput('')
   }
 
+  if (view === 'admin') {
+    return <Admin onBack={() => setView('chat')} />
+  }
+
   return (
     <div className="app">
       <header className="header">
@@ -65,12 +71,23 @@ export default function App() {
           </div>
         </div>
 
-        {messages.length > 0 && (
-          <button type="button" className="ghost" onClick={reset} disabled={loading}>
-            <Icon name="plus" size={16} />
-            <span className="label">Nouvelle conversation</span>
+        <div className="header-actions">
+          {messages.length > 0 && (
+            <button type="button" className="ghost" onClick={reset} disabled={loading}>
+              <Icon name="plus" size={16} />
+              <span className="label">Nouvelle conversation</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setView('admin')}
+            aria-label="Gérer les documents"
+          >
+            <Icon name="database" size={16} />
+            <span className="label">Documents</span>
           </button>
-        )}
+        </div>
       </header>
 
       <main className="log" role="log" aria-live="polite">
