@@ -21,3 +21,5 @@ application-local.yml
 Thumbs.db
 
 test/
+docs/demo/*.mp4
+docs/demo/*.mp4
