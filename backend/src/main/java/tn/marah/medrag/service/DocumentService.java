@@ -1,5 +1,6 @@
 package tn.marah.medrag.service;
 
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -8,7 +9,10 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 
 @Service
@@ -38,6 +42,15 @@ public class DocumentService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lecture du fichier impossible");
         }
 
+        String hash = sha256(bytes);
+        List<String> existing = jdbc.query(
+                "SELECT title FROM documents WHERE file_hash = ?",
+                (rs, i) -> rs.getString("title"), hash);
+        if (!existing.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ce fichier a deja ete envoye (document : " + existing.get(0) + ")");
+        }
+
         List<PdfTextExtractor.PageText> pages;
         try {
             pages = extractor.extract(bytes);
@@ -58,10 +71,15 @@ public class DocumentService {
         String fileName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "document.pdf";
         String cleanUrl = (sourceUrl != null && !sourceUrl.isBlank()) ? sourceUrl.trim() : null;
 
-        Long documentId = jdbc.queryForObject(
-                "INSERT INTO documents (title, organisme, source_url, language, file_name, page_count, status) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, 'PENDING') RETURNING id",
-                Long.class, title, organisme, cleanUrl, language, fileName, pages.size());
+        Long documentId;
+        try {
+            documentId = jdbc.queryForObject(
+                    "INSERT INTO documents (title, organisme, source_url, language, file_name, page_count, status, file_hash) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?) RETURNING id",
+                    Long.class, title, organisme, cleanUrl, language, fileName, pages.size(), hash);
+        } catch (DuplicateKeyException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Ce fichier a deja ete envoye");
+        }
 
         jdbc.batchUpdate(
                 "INSERT INTO chunks (document_id, chunk_index, page_number, content) VALUES (?, ?, ?, ?)",
@@ -94,6 +112,15 @@ public class DocumentService {
         int deleted = jdbc.update("DELETE FROM documents WHERE id = ?", id);
         if (deleted == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document introuvable");
+        }
+    }
+
+    private static String sha256(byte[] bytes) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(bytes));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
         }
     }
 }
